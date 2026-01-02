@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pop Mart Blind Box — Interactive</title>
+  <style>
+    :root{--accent:#d84315;--muted:#666}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;margin:0;background:#fafafa;color:#111}
+    header{padding:18px 24px;border-bottom:1px solid #eee;background:#fff}
+    .container{display:flex;gap:24px;padding:20px;max-width:1100px;margin:0 auto}
+    .col{background:#fff;border:1px solid #eee;border-radius:8px;padding:16px;box-shadow:0 1px 0 rgba(0,0,0,.02)}
+    .left{flex:0 0 320px}
+    .right{flex:1;min-width:320px}
+    h1{margin:0;font-size:18px}
+    .fig-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}
+    .fig{display:flex;gap:8px;align-items:center;padding:6px;border-radius:6px}
+    .fig img{width:56px;height:56px;object-fit:cover;border-radius:6px}
+    .fig .meta{font-size:13px}
+    .boxes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+    .box{border:1px dashed #ddd;padding:10px;border-radius:8px;text-align:center;background:#fff;position:relative}
+    .box img{width:80px;height:80px;object-fit:contain}
+    label{display:block;font-size:12px;color:var(--muted);margin-top:8px}
+    input[type=text]{width:100%;padding:6px;border:1px solid #ddd;border-radius:6px}
+    .controls{display:flex;gap:8px;margin-top:12px}
+    button{background:var(--accent);color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer}
+    .results-summary{display:flex;gap:12px;align-items:center}
+    .result-list{margin-top:12px}
+    .result-item{display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid #f2f2f2;flex-wrap:wrap}
+    .thumb{width:36px;height:36px;object-fit:cover;border-radius:6px}
+    .prob{margin-left:auto;font-weight:600;color:var(--accent)}
+    .per-slot-row{display:flex;gap:6px;align-items:center;flex:1;min-width:0;flex-wrap:wrap;margin-left:12px}
+    .slot-chip{background:#fff;border:1px solid #eee;padding:3px 6px;border-radius:6px;font-size:10px;color:var(--muted);min-width:38px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .slot-chip.top1{background:linear-gradient(90deg, #fff7ed, #fff3e0);border-color:#ffd1a8;color:#a64b00;font-weight:700}
+    .slot-chip.top2{background:linear-gradient(90deg,#f7fbff,#eef7ff);border-color:#cfe4ff;color:#0b5fff;font-weight:600}
+    .slot-chip.top3{background:#f7fff7;border-color:#c8f0d0;color:#107a28;font-weight:600}
+    .heatmap{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:12px}
+    .slot{background:#fafafa;padding:6px;border-radius:6px;border:1px solid #f0f0f0;text-align:center;font-size:12px}
+    .packs{margin-top:12px;max-height:220px;overflow:auto;border-top:1px solid #f4f4f4;padding-top:8px}
+    footer{padding:12px;text-align:center;color:#888;font-size:13px}
+    @media(max-width:900px){.container{flex-direction:column}.left{flex:auto}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Pop Mart Blind Box — Interactive</h1>
+  </header>
+
+  <main class="container">
+    <section class="col left">
+      <strong>Figure list</strong>
+      <div class="fig-grid" id="figureGrid"></div>
+
+      <strong id="hintsTitle" style="display:block;margin-top:14px">N-box hints (per box)</strong>
+      <div class="boxes" id="boxesContainer"></div>
+
+      <div class="controls">
+        <select id="modeSelect" aria-label="Solver mode">
+          <option value="auto">Auto</option>
+          <option value="exact">Exact</option>
+          <option value="approx">Approx</option>
+        </select>
+        <input id="sampleSize" type="number" min="100" value="2000" style="width:120px;padding:6px;border-radius:6px;border:1px solid #ddd" />
+        <button id="compute">Compute</button>
+      </div>
+    </section>
+
+    <section class="col right">
+      <div class="results-summary">
+        <div><strong>Total consistent packs:</strong> <span id="totalPacks" style="color:var(--accent);font-weight:700;margin-left:6px">—</span></div>
+        <div style="margin-left:12px;color:var(--muted)">Mode: <span id="usedMode">—</span></div>
+      </div>
+
+      <div class="result-list" id="results"></div>
+
+      <strong style="display:block;margin-top:14px">Per-slot heatmap</strong>
+      <div class="heatmap" id="heatmap"></div>
+
+      <strong style="display:block;margin-top:14px">Sample / Packs</strong>
+      <div class="packs" id="packsList"></div>
+
+      <div style="margin-top:12px">
+        <button id="export">Export JSON</button>
+        <button id="copyLink" style="background:#666">Copy share link</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>Interactive mockup with embedded solver (exact + sampling).</footer>
+
+  <script>
+    // Sample figures from the provided set (secrets excluded)
+    const figures = [
+      {id:'lumino', name:'Lumino Feast', img:'https://prod-america-res.popmart.com/default/20250929_103441_445345____1_why-so-serious-series-vinyl-plush-pendant-blind-box_plush-toys_details_pop-mart-us_____1200x1900.jpg'},
+      {id:'crimson', name:'Crimson Dancer', img:'https://prod-america-res.popmart.com/default/20250929_103441_765631____3_why-so-serious-series-vinyl-plush-pendant-blind-box_plush-toys_details_pop-mart-us_____1200x2247.jpg'},
+      {id:'shadow', name:'Shadow Joker', img:'https://prod-america-res.popmart.com/default/20250929_103440_848037____2_why-so-serious-series-vinyl-plush-pendant-blind-box_plush-toys_details_pop-mart-us_____1200x1768.jpg'},
+      {id:'rainbow', name:'Rainbow Jelly Bean', img:'https://prod-america-res.popmart.com/default/20250929_103441_663498____4_why-so-serious-series-vinyl-plush-pendant-blind-box_plush-toys_details_pop-mart-us_____1200x2073.jpg'},
+      {id:'string', name:'String Puppet', img:'https://prod-america-res.popmart.com/default/20250929_103441_884119____5_why-so-serious-series-vinyl-plush-pendant-blind-box_plush-toys_details_pop-mart-us_____1200x999.jpg'},
+      {id:'flame', name:'Flame Clown', img:'https://prod-america-res.popmart.com/default/20250929_103441_659446____6_why-so-serious-series-vinyl-plush-pendant-blind-box_plush-toys_details_pop-mart-us_____1200x1568.jpg'},
+      {id:'juggle', name:'Juggling Clown', img:'https://prod-america-res.popmart.com/default/20250929_103441_603599____7_why-so-serious-series-vinyl-plush-pendant-blind-box_plush-toys_details_pop-mart-us_____1200x1577.jpg'},
+      {id:'silver', name:'Silver Mist Clown', img:'https://prod-america-res.popmart.com/default/20250929_103441_352152____8_why-so-serious-series-vinyl-plush-pendant-blind-box_plush-toys_details_pop-mart-us_____1200x1564.jpg'}
+    ];
+
+    // Render figure grid
+    const figureGrid = document.getElementById('figureGrid');
+    figures.forEach(f=>{
+      const d = document.createElement('div'); d.className='fig';
+      d.innerHTML = `<img src="${f.img}" alt="${f.name}"><div class="meta">${f.name}</div>`;
+      figureGrid.appendChild(d);
+    });
+
+    // Create box hint inputs (one per slot — match figure count)
+    const boxesContainer = document.getElementById('boxesContainer');
+    const nSlots = figures.length;
+    document.getElementById('hintsTitle').textContent = `${nSlots}-box hints (per box)`;
+    for(let i=0;i<nSlots;i++){
+      const b = document.createElement('div'); b.className='box';
+      // build checkbox list for all figures to mark excludes for this box
+      const checks = figures.map(f=>`<label style="display:block;text-align:left;font-size:13px;margin-top:6px"><input type="checkbox" data-figure-id="${f.id}" /> ${f.name}</label>`).join('');
+      b.innerHTML = `<div>Box ${i+1}</div><img src="https://cdn-global.popmart.com/images/boxPC/bigBox/boxChooseGuide3.png" alt="box"><div id="exclude_${i}">${checks}</div>`;
+      boxesContainer.appendChild(b);
+    }
+
+    // Utilities
+    function nameToId(name){
+      if(!name) return null;
+      name = name.trim().toLowerCase();
+      const f = figures.find(x=>x.name.toLowerCase()===name);
+      return f?f.id:null;
+    }
+
+    function parseHints(){
+      const hints = [];
+      for(let i=0;i<nSlots;i++){
+        const container = document.getElementById(`exclude_${i}`);
+        const checked = Array.from(container.querySelectorAll('input[type=checkbox]:checked'));
+        const excludes = checked.map(cb=>cb.getAttribute('data-figure-id'));
+        hints.push({type:'position', index:i, excludes});
+      }
+      return hints;
+    }
+
+    // Solver: exact backtracking with ordering
+    function buildAllowedDomains(hints){
+      const allIds = figures.map(f=>f.id);
+      const allowed = Array.from({length:nSlots},()=>new Set(allIds));
+      for(const h of hints){
+        if(h && h.excludes){
+          for(const ex of h.excludes){ allowed[h.index].delete(ex); }
+        }
+      }
+      for(let i=0;i<nSlots;i++){
+        if(allowed[i].size===0) return {conflict:true, allowed};
+      }
+      return {conflict:false, allowed};
+    }
+
+    function chooseModeAuto(){
+      const n = figures.length;
+      const k = nSlots; // pack size equals number of slots
+      function C(n,k){if(k>n) return 0; let res=1; for(let i=0;i<k;i++){res=res*(n-i)/(i+1)} return Math.round(res)}
+      const combos = C(n,Math.min(6,n));
+      // heuristic: if small collection prefer exact, otherwise approx
+      return combos<=50000? 'exact':'approx';
+    }
+
+    // Exact enumeration
+    async function runExact(allowed){
+      const order = Array.from({length:nSlots},(_,i)=>i).sort((a,b)=>allowed[a].size - allowed[b].size || a-b);
+      const used = new Set();
+      const assignment = Array(nSlots).fill(null);
+      let solutionCount=0;
+      const perFigureCount = {}; figures.forEach(f=>perFigureCount[f.id]=0);
+      const perSlotCount = Array.from({length:nSlots},()=>{const m={}; figures.forEach(f=>m[f.id]=0); return m});
+
+      // forward-check quick helper
+      function hasCandidateForUnassigned(){
+        for(const s of order){ if(assignment[s]===null){
+          let ok=false; for(const c of allowed[s]) if(!used.has(c)){ ok=true; break; }
+          if(!ok) return false;
+        }}
+        return true;
+      }
+
+      // backtracking
+      function backtrack(pos){
+        if(pos===order.length){
+          solutionCount++;
+          for(let i=0;i<nSlots;i++){ const f=assignment[i]; perSlotCount[i][f]++; perFigureCount[f]++; }
+          return;
+        }
+        const slot = order[pos];
+        for(const f of Array.from(allowed[slot])){
+          if(used.has(f)) continue;
+          assignment[slot]=f; used.add(f);
+          if(hasCandidateForUnassigned()) backtrack(pos+1);
+          used.delete(f); assignment[slot]=null;
+        }
+      }
+
+      // run with small async breaks to keep UI responsive for large enumerations
+      return new Promise((resolve)=>{
+        setTimeout(()=>{ backtrack(0); resolve({solutionCount,perFigureCount,perSlotCount}); },0);
+      });
+    }
+
+    // Approximate: rejection sampling
+    function runApprox(allowed, targetSamples){
+      const perFigureCount = {}; figures.forEach(f=>perFigureCount[f.id]=0);
+      const perSlotCount = Array.from({length:nSlots},()=>{const m={}; figures.forEach(f=>m[f.id]=0); return m});
+      let accepted=0, attempts=0;
+      const ids = figures.map(f=>f.id);
+      while(accepted<targetSamples && attempts<targetSamples*100){
+        attempts++;
+        // sample nSlots distinct figures uniformly
+        const pool = ids.slice();
+        const pick = [];
+        for(let i=0;i<nSlots;i++){ const idx = Math.floor(Math.random()*pool.length); pick.push(pool.splice(idx,1)[0]); }
+        // assign to slots and check excludes
+        let ok=true;
+        for(let i=0;i<nSlots;i++){
+          if(allowed[i].has(pick[i])===false){ ok=false; break; }
+        }
+        if(!ok) continue;
+        accepted++;
+        for(let i=0;i<nSlots;i++){ perSlotCount[i][pick[i]]++; perFigureCount[pick[i]]++; }
+      }
+      return {accepted,attempts,perFigureCount,perSlotCount};
+    }
+
+    // UI update
+    function updateResults(solutionCount, perFigureCount, perSlotCount, mode, samplesInfo){
+      document.getElementById('totalPacks').textContent = solutionCount|| samplesInfo?.accepted || 0;
+      document.getElementById('usedMode').textContent = mode;
+      // update per-figure list
+      const results = document.getElementById('results'); results.innerHTML='';
+      const total = solutionCount || samplesInfo?.accepted || 1;
+      figures.forEach(f=>{
+        const cnt = perFigureCount[f.id]||0;
+        const p = (cnt/total*100).toFixed(1);
+        const row = document.createElement('div'); row.className='result-item';
+        // compute per-slot counts and find top 3 slots for this figure
+        const slotCounts = [];
+        for(let i=0;i<nSlots;i++){
+          const slotCount = (perSlotCount[i] && perSlotCount[i][f.id])? perSlotCount[i][f.id] : 0;
+          slotCounts.push({i, count: slotCount});
+        }
+        const sortedSlots = slotCounts.slice().sort((a,b)=>b.count - a.count);
+        const topIndices = sortedSlots.slice(0,3).map(x=>x.i);
+        // build per-slot chips showing probability for this figure in each slot
+        const slotChips = [];
+        for(let i=0;i<nSlots;i++){
+          const slotCount = slotCounts[i].count;
+          const pct = (slotCount/total*100).toFixed(1);
+          let cls = 'slot-chip';
+          if(topIndices[0]===i) cls += ' top1'; else if(topIndices[1]===i) cls += ' top2'; else if(topIndices[2]===i) cls += ' top3';
+          slotChips.push(`<div class="${cls}" title="Slot ${i+1}">S${i+1}: ${pct}%</div>`);
+        }
+        row.innerHTML = `<img class="thumb" src="${f.img}"><div>${f.name}</div><div class="per-slot-row">${slotChips.join('')}</div><div class="prob">${p}%</div>`;
+        results.appendChild(row);
+      });
+      // heatmap (show top 6 figures per slot visually as names & probabilities)
+      const heat = document.getElementById('heatmap'); heat.innerHTML='';
+      // ensure heatmap columns match number of slots
+      heat.style.gridTemplateColumns = `repeat(${nSlots},1fr)`;
+      for(let i=0;i<nSlots;i++){
+        const slotDiv = document.createElement('div'); slotDiv.className='slot';
+        // compute top candidate by perSlotCount
+        const map = perSlotCount[i]||{};
+        const entries = Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,3);
+        slotDiv.innerHTML = `<div style="font-weight:700">Slot ${i+1}</div>` + entries.map(e=>{
+          const id=e[0], v=e[1]; const name = figures.find(x=>x.id===id)?.name||id; const pct = (v/total*100).toFixed(1);
+          return `<div style="font-size:12px">${name}: ${pct}%</div>`;
+        }).join('');
+        heat.appendChild(slotDiv);
+      }
+      // packs preview: show a few example packs (constructed from perSlotCount by taking top choices)
+      const packs = document.getElementById('packsList'); packs.innerHTML='';
+      // simple deterministic preview: top-1 per slot
+      const pack = [];
+      for(let i=0;i<nSlots;i++){
+        const map = perSlotCount[i]||{}; const top = Object.entries(map).sort((a,b)=>b[1]-a[1])[0];
+        if(top) pack.push(figures.find(x=>x.id===top[0]).name);
+      }
+      if(pack.length===6){ const p = document.createElement('div'); p.textContent = 'Top preview pack: ' + pack.join(', '); packs.appendChild(p); }
+    }
+
+    // Compute handler
+    document.getElementById('compute').addEventListener('click', async ()=>{
+      const hints = parseHints();
+      const {conflict, allowed} = buildAllowedDomains(hints);
+      if(conflict){ alert('One or more boxes have no allowed figures. Check hints.'); return; }
+      const modeSel = document.getElementById('modeSelect').value;
+      let mode = modeSel;
+      if(modeSel==='auto') mode = chooseModeAuto();
+      document.getElementById('usedMode').textContent = 'Running...';
+      if(mode==='exact'){
+        // prepare allowed as array of Sets
+        const res = await runExact(allowed);
+        updateResults(res.solutionCount, res.perFigureCount, res.perSlotCount, 'exact');
+      } else {
+        const target = parseInt(document.getElementById('sampleSize').value,10)||2000;
+        const res = runApprox(allowed, target);
+        updateResults(res.accepted, res.perFigureCount, res.perSlotCount, 'approx', res);
+      }
+    });
+
+    // Export / link
+    document.getElementById('export').addEventListener('click', ()=>{
+      const hints = parseHints();
+      const payload = {figures:figures.map(f=>({id:f.id,name:f.name,img:f.img})), hints};
+      const blob = new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download='popmart_payload.json'; a.click(); URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('copyLink').addEventListener('click', ()=>{
+      const hints = parseHints();
+      const payload = {figures:figures.map(f=>f.id), hints};
+      const s = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+      const link = location.origin + location.pathname + '#data=' + s;
+      navigator.clipboard.writeText(link).then(()=>alert('Link copied to clipboard'));
+    });
+
+    // On load: check fragment for data
+    (function(){
+      if(location.hash.startsWith('#data=')){
+        try{ const s=location.hash.slice(6); const payload = JSON.parse(decodeURIComponent(escape(atob(s))));
+          // prefill hints if present (check appropriate boxes)
+          if(payload.hints){ payload.hints.forEach((h,i)=>{
+            if(h && h.excludes){
+              const container = document.getElementById(`exclude_${i}`);
+              if(container){
+                h.excludes.forEach(id=>{
+                  const cb = container.querySelector(`input[data-figure-id="${id}"]`);
+                  if(cb) cb.checked = true;
+                });
+              }
+            }
+          }); }
+        }catch(e){}
+      }
+    })();
+  </script>
+</body>
+</html>
