@@ -49,7 +49,16 @@
   <main class="container">
     <section class="col left">
       <strong>Figure list</strong>
-      <div class="fig-grid" id="figureGrid"></div>
+      <div style="margin-top:8px;margin-bottom:8px">
+        <label for="seriesSelect" style="font-size:13px;display:block;margin-bottom:6px">Select series</label>
+        <select id="seriesSelect" aria-label="Series selector" style="width:100%;padding:6px;border-radius:6px;border:1px solid #ddd">
+          <option value="">— Select a series —</option>
+          <option value="whyso">Why So Serious</option>
+          <option value="twinkle">We are Twinkle Twinkle</option>
+        </select>
+      </div>
+        <div class="fig-grid" id="figureGrid"></div>
+        
 
       <strong id="hintsTitle" style="display:block;margin-top:14px">N-box hints (per box)</strong>
       <div class="boxes" id="boxesContainer"></div>
@@ -90,7 +99,7 @@
 
   <script>
     // Sample figures from the provided set (secrets excluded)
-    const figures = [
+    const defaultFigures = [
       {id:'lumino', name:'Lumino Feast', img:'https://prod-america-res.popmart.com/default/20250929_103441_445345____1_why-so-serious-series-vinyl-plush-pendant-blind-box_plush-toys_details_pop-mart-us_____1200x1900.jpg'},
       {id:'crimson', name:'Crimson Dancer', img:'https://prod-america-res.popmart.com/default/20250929_103441_765631____3_why-so-serious-series-vinyl-plush-pendant-blind-box_plush-toys_details_pop-mart-us_____1200x2247.jpg'},
       {id:'shadow', name:'Shadow Joker', img:'https://prod-america-res.popmart.com/default/20250929_103440_848037____2_why-so-serious-series-vinyl-plush-pendant-blind-box_plush-toys_details_pop-mart-us_____1200x1768.jpg'},
@@ -100,82 +109,61 @@
       {id:'juggle', name:'Juggling Clown', img:'https://prod-america-res.popmart.com/default/20250929_103441_603599____7_why-so-serious-series-vinyl-plush-pendant-blind-box_plush-toys_details_pop-mart-us_____1200x1577.jpg'},
       {id:'silver', name:'Silver Mist Clown', img:'https://prod-america-res.popmart.com/default/20250929_103441_352152____8_why-so-serious-series-vinyl-plush-pendant-blind-box_plush-toys_details_pop-mart-us_____1200x1564.jpg'}
     ];
+    let figures = [];
+    // allow dynamic replacement of figures when importing a set URL
+    let nSlots = figures.length;
+    let checkboxMatrix = []; 
 
-    // Render figure grid
-    const figureGrid = document.getElementById('figureGrid');
-    figures.forEach(f=>{
-      const d = document.createElement('div'); d.className='fig';
-      d.innerHTML = `<img src="${f.img}" alt="${f.name}"><div class="meta">${f.name}</div>`;
-      figureGrid.appendChild(d);
-    });
+    
 
-    // Create box hint inputs (one per slot — match figure count)
-    const boxesContainer = document.getElementById('boxesContainer');
-    const nSlots = figures.length;
-    document.getElementById('hintsTitle').textContent = `${nSlots}-box hints — check figures NOT contained in each box`;
-
-    // Create a collapsed Known Figures section (discovered figures)
-    const details = document.createElement('details'); details.id = 'knownSection';
-    const summary = document.createElement('summary'); summary.textContent = 'Known / Discovered figures (optional)';
-    details.appendChild(summary);
-    const knownsContainer = document.createElement('div'); knownsContainer.id = 'knownsContainer'; knownsContainer.style.padding = '10px 0 8px 0';
-    // build selects for each slot inside the collapsed section
-    for(let i=0;i<nSlots;i++){
-      const selWrap = document.createElement('div'); selWrap.style.marginTop='8px';
-      const selLabel = document.createElement('div'); selLabel.style.fontSize='13px'; selLabel.textContent = `Box ${i+1}: `;
-      const sel = document.createElement('select'); sel.id = `known_${i}`; sel.setAttribute('aria-label', `Known figure for box ${i+1}`);
-      const emptyOpt = document.createElement('option'); emptyOpt.value=''; emptyOpt.textContent = '— Known figure (optional) —'; sel.appendChild(emptyOpt);
-      for(const f of figures){ const o = document.createElement('option'); o.value = f.id; o.textContent = f.name; sel.appendChild(o); }
-      selWrap.appendChild(selLabel); selWrap.appendChild(sel);
-      knownsContainer.appendChild(selWrap);
-    }
-    details.appendChild(knownsContainer);
-    // insert details before the boxes container
-    boxesContainer.parentElement.insertBefore(details, boxesContainer);
-
-    // Now create the boxes (without select)
-    for(let i=0;i<nSlots;i++){
-      const b = document.createElement('div'); b.className='box';
-      // build checkbox list for all figures to mark excludes for this box
-      const checks = figures.map(f=>`<label style="display:block;text-align:left;font-size:13px;margin-top:6px"><input type="checkbox" data-figure-id="${f.id}" /> ${f.name}</label>`).join('');
-      b.innerHTML = `<div>Box ${i+1}</div><div style="font-size:12px;color:var(--muted);margin-top:6px">Check figures NOT contained in this box</div><div id="exclude_${i}">${checks}</div>`;
-      boxesContainer.appendChild(b);
-    }
-
-    // Keep references to checkbox inputs to allow disabling when a figure is assigned to a known box
-    const checkboxMatrix = Array.from({length:nSlots},(_,i)=>{
-      const container = document.getElementById(`exclude_${i}`);
-      return Array.from(container.querySelectorAll('input[type=checkbox]'));
-    });
-
-    // When a known figure is selected for a slot, disable that figure's checkboxes in other slots
-    function handleKnownChange(slotIndex, figureId){
+    // initial render
+    function applyFigures(newFigures){
+      figures = newFigures.slice();
+      // render grid
+      const grid = document.getElementById('figureGrid'); grid.innerHTML='';
+      figures.forEach(f=>{ const d = document.createElement('div'); d.className='fig'; d.innerHTML = `<img src="${f.img}" alt="${f.name}"><div class="meta">${f.name}</div>`; grid.appendChild(d); });
+      // rebuild boxes and known section
+      const boxesContainer = document.getElementById('boxesContainer'); boxesContainer.innerHTML='';
+      nSlots = figures.length;
+      document.getElementById('hintsTitle').textContent = `${nSlots}-box hints — check figures NOT contained in each box`;
+      // remove existing knownSection if any
+      const existing = document.getElementById('knownSection'); if(existing) existing.remove();
+      const details = document.createElement('details'); details.id = 'knownSection';
+      const summary = document.createElement('summary'); summary.textContent = 'Known / Discovered figures (optional)';
+      details.appendChild(summary);
+      const knownsContainer = document.createElement('div'); knownsContainer.id = 'knownsContainer'; knownsContainer.style.padding = '10px 0 8px 0';
       for(let i=0;i<nSlots;i++){
-        if(i===slotIndex) continue;
-        checkboxMatrix[i].forEach(cb=>{
-          if(cb.getAttribute('data-figure-id')===figureId){ cb.checked=false; cb.disabled = figureId?true:false; }
-          // re-enable other checkboxes when figureId is empty
-          if(!figureId){ cb.disabled = false; }
-        });
+        const selWrap = document.createElement('div'); selWrap.style.marginTop='8px';
+        const selLabel = document.createElement('div'); selLabel.style.fontSize='13px'; selLabel.textContent = `Box ${i+1}: `;
+        const sel = document.createElement('select'); sel.id = `known_${i}`; sel.setAttribute('aria-label', `Known figure for box ${i+1}`);
+        const emptyOpt = document.createElement('option'); emptyOpt.value=''; emptyOpt.textContent = '— Known figure (optional) —'; sel.appendChild(emptyOpt);
+        for(const f of figures){ const o = document.createElement('option'); o.value = f.id; o.textContent = f.name; sel.appendChild(o); }
+        selWrap.appendChild(selLabel); selWrap.appendChild(sel);
+        knownsContainer.appendChild(selWrap);
       }
+      details.appendChild(knownsContainer);
+      boxesContainer.parentElement.insertBefore(details, boxesContainer);
+      // create boxes
+      for(let i=0;i<nSlots;i++){
+        const b = document.createElement('div'); b.className='box';
+        const checks = figures.map(f=>`<label style="display:block;text-align:left;font-size:13px;margin-top:6px"><input type="checkbox" data-figure-id="${f.id}" /> ${f.name}</label>`).join('');
+        b.innerHTML = `<div>Box ${i+1}</div><div style="font-size:12px;color:var(--muted);margin-top:6px">Check figures NOT contained in this box</div><div id="exclude_${i}">${checks}</div>`;
+        boxesContainer.appendChild(b);
+      }
+      // rebuild checkboxMatrix and known select listeners
+      window.checkboxMatrix = Array.from({length:nSlots},(_,i)=>{ const container = document.getElementById(`exclude_${i}`); return Array.from(container.querySelectorAll('input[type=checkbox]')); });
+      window.handleKnownChange = function(slotIndex, figureId){ for(let i=0;i<nSlots;i++){ if(i===slotIndex) continue; window.checkboxMatrix[i].forEach(cb=>{ if(cb.getAttribute('data-figure-id')===figureId){ cb.checked=false; cb.disabled = figureId?true:false; } if(!figureId){ cb.disabled = false; } }); } }
+      for(let i=0;i<nSlots;i++){ const sel = document.getElementById(`known_${i}`); sel.addEventListener('change',(e)=>{ const val = e.target.value||null; if(val){ for(let j=0;j<nSlots;j++){ if(j===i) continue; const other = document.getElementById(`known_${j}`); if(other && other.value===val){ alert('Figure already assigned to another known box.'); sel.value=''; window.handleKnownChange(i, null); return; } } } window.handleKnownChange(i,val); }); }
     }
 
-    // attach change listeners for known selects
-    for(let i=0;i<nSlots;i++){
-      const sel = document.getElementById(`known_${i}`);
-      sel.addEventListener('change', (e)=>{
-        const val = e.target.value || null;
-        // if selected value is already assigned to another slot, warn and clear
-        if(val){
-          for(let j=0;j<nSlots;j++){
-            if(j===i) continue;
-            const other = document.getElementById(`known_${j}`);
-            if(other && other.value===val){ alert('Figure already assigned to another known box.'); sel.value=''; handleKnownChange(i, null); return; }
-          }
-        }
-        handleKnownChange(i, val);
-      });
-    }
+    // initial state: user must select a series first
+    applyFigures([]);
+
+    // (Duplicate known section and boxes creation removed — handled in applyFigures)
+    // disable solving and export controls until a series is chosen
+    setUIEnabled(false);
+
+    // checkboxMatrix and known change handler are created inside applyFigures and exposed on window
 
     // Utilities
     function nameToId(name){
@@ -390,7 +378,82 @@
       navigator.clipboard.writeText(link).then(()=>alert('Link copied to clipboard'));
     });
 
-    // On load: check fragment for data
+    // Embedded fallback payload for Twinkle Twinkle (used if fetching local JSON fails)
+    const twinklePayload = {
+      figures: [
+        {id: "nighty_night", name: "Nighty Night", img: "https://prod-america-res.popmart.com/default/20240809_113144_375922____we-are-twinkle-twinkle-series-figures-blind-boxes-pop-mart-us-details-1_____1200x1828.jpg?x-oss-process=image/format,webp"},
+        {id: "waiting_for_you", name: "Waiting for You", img: "https://prod-america-res.popmart.com/default/20240809_113144_363565____we-are-twinkle-twinkle-series-figures-blind-boxes-pop-mart-us-details-2_____1200x1830.jpg?x-oss-process=image/format,webp"},
+        {id: "dream_catcher", name: "Dream Catcher", img: "https://prod-america-res.popmart.com/default/20240809_113144_801878____we-are-twinkle-twinkle-series-figures-blind-boxes-pop-mart-us-details-3_____1200x777.jpg?x-oss-process=image/format,webp"},
+        {id: "just_a_tad_sweeter", name: "Just a Tad Sweeter", img: "https://prod-america-res.popmart.com/default/20240809_113145_250671____we-are-twinkle-twinkle-series-figures-blind-boxes-pop-mart-us-details-4_____1200x1829.jpg?x-oss-process=image/format,webp"},
+        {id: "where_is_my_brain", name: "Where is My Brain?", img: "https://prod-america-res.popmart.com/default/20240809_113144_303086____we-are-twinkle-twinkle-series-figures-blind-boxes-pop-mart-us-details-5_____1200x885.jpg?x-oss-process=image/format,webp"},
+        {id: "heartbreak_harmony", name: "Heartbreak Harmony", img: "https://prod-america-res.popmart.com/default/20240809_113145_264409____we-are-twinkle-twinkle-series-figures-blind-boxes-pop-mart-us-details-6_____1200x2531.jpg?x-oss-process=image/format,webp"},
+        {id: "magic", name: "Magic", img: "https://prod-america-res.popmart.com/default/20240809_113145_742042____we-are-twinkle-twinkle-series-figures-blind-boxes-pop-mart-us-details-7_____1200x3131.jpg?x-oss-process=image/format,webp"},
+        {id: "moon_gelato", name: "Moon Gelato", img: "https://prod-america-res.popmart.com/default/20240809_113145_522524____we-are-twinkle-twinkle-series-figures-blind-boxes-pop-mart-us-details-8_____1200x3132.jpg?x-oss-process=image/format,webp"},
+        {id: "you_equal_sunshine", name: "You Equal Sunshine", img: "https://prod-america-res.popmart.com/default/20240809_113145_855989____we-are-twinkle-twinkle-series-figures-blind-boxes-pop-mart-us-details-9_____1200x3129.jpg?x-oss-process=image/format,webp"},
+        {id: "master_of_chill", name: "The Master of Chill (Secret)", img: "https://prod-america-res.popmart.com/default/20240809_113145_730866____we-are-twinkle-twinkle-series-figures-blind-boxes-pop-mart-us-details-10_____1200x3133.jpg?x-oss-process=image/format,webp"}
+      ],
+      hints: [
+        { type: "position", index: 0, excludes: [] },
+        { type: "position", index: 1, excludes: [] },
+        { type: "position", index: 2, excludes: [] },
+        { type: "position", index: 3, excludes: [] },
+        { type: "position", index: 4, excludes: [] },
+        { type: "position", index: 5, excludes: [] },
+        { type: "position", index: 6, excludes: [] },
+        { type: "position", index: 7, excludes: [] },
+        { type: "position", index: 8, excludes: [] },
+        { type: "position", index: 9, excludes: [] }
+      ],
+      knownBoxes: []
+    };
+
+    function loadPayload(payload){
+      try{
+        if(payload.figures) applyFigures(payload.figures);
+        // prefill hints if present (check appropriate boxes)
+        if(payload.hints){ payload.hints.forEach((h,i)=>{
+          if(h && h.excludes){
+            const container = document.getElementById(`exclude_${i}`);
+            if(container){
+              h.excludes.forEach(id=>{
+                const cb = container.querySelector(`input[data-figure-id="${id}"]`);
+                if(cb) cb.checked = true;
+              });
+            }
+          }
+        }); }
+        // prefill knownBoxes if present
+        if(payload.knownBoxes){ payload.knownBoxes.forEach(kb=>{
+          const sel = document.getElementById(`known_${kb.index}`);
+          if(sel) sel.value = kb.figureId;
+          // disable that figure in other boxes
+          if(window.handleKnownChange) window.handleKnownChange(kb.index, kb.figureId);
+        }); }
+      }catch(e){ alert('Failed to load preset: '+e.message); }
+    }
+
+    async function loadTwinklePreset(){
+      try{
+        const r = await fetch('example_payload_twinkle.json');
+        if(r.ok){ const payload = await r.json(); loadPayload(payload); }
+        else { loadPayload(twinklePayload); }
+      }catch(e){ loadPayload(twinklePayload); }
+      setUIEnabled(true);
+    }
+
+    // On load: setup UI helpers and fragment loader
+    function setUIEnabled(enabled){
+      const els = ['compute','modeSelect','sampleSize','export','copyLink'];
+      els.forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = !enabled; });
+    }
+
+    document.getElementById('seriesSelect').addEventListener('change', async (e)=>{
+      const v = e.target.value;
+      if(!v){ applyFigures([]); setUIEnabled(false); return; }
+      if(v==='whyso'){ applyFigures(defaultFigures); setUIEnabled(true); return; }
+      if(v==='twinkle'){ await loadTwinklePreset(); return; }
+    });
+
     (function(){
       if(location.hash.startsWith('#data=')){
         try{ const s=location.hash.slice(6); const payload = JSON.parse(decodeURIComponent(escape(atob(s))));
@@ -411,11 +474,13 @@
             const sel = document.getElementById(`known_${kb.index}`);
             if(sel) sel.value = kb.figureId;
             // disable that figure in other boxes
-            handleKnownChange(kb.index, kb.figureId);
+            if(window.handleKnownChange) window.handleKnownChange(kb.index, kb.figureId);
           }); }
         }catch(e){}
       }
     })();
+
+    
   </script>
 </body>
 </html>
