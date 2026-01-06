@@ -157,8 +157,35 @@
       }
       // rebuild checkboxMatrix and known select listeners
       window.checkboxMatrix = Array.from({length:nSlots},(_,i)=>{ const container = document.getElementById(`exclude_${i}`); return container ? Array.from(container.querySelectorAll('input[type=checkbox]')) : []; });
-      window.handleKnownChange = function(slotIndex, figureId){ for(let i=0;i<nSlots;i++){ if(i===slotIndex) continue; window.checkboxMatrix[i].forEach(cb=>{ if(cb.getAttribute('data-figure-id')===figureId){ cb.checked=false; cb.disabled = figureId?true:false; } if(!figureId){ cb.disabled = false; } }); } }
-      for(let i=0;i<nSlots;i++){ const sel = document.getElementById(`known_${i}`); if(sel) sel.addEventListener('change',(e)=>{ const val = e.target.value||null; if(val){ for(let j=0;j<nSlots;j++){ if(j===i) continue; const other = document.getElementById(`known_${j}`); if(other && other.value===val){ alert('Figure already assigned to another known box.'); sel.value=''; window.handleKnownChange(i, null); return; } } } window.handleKnownChange(i,val); }); }
+      // handle a known box change: mark excludes and disable auto-set boxes; track auto-disabled with data-auto-disabled
+      window.handleKnownChange = function(slotIndex, figureId){
+        for(let i=0;i<nSlots;i++){
+          window.checkboxMatrix[i].forEach(cb=>{
+            const id = cb.getAttribute('data-figure-id');
+            // Clear prior auto-disabled state when known is removed
+            if(!figureId){ if(cb.getAttribute('data-auto-disabled')){ cb.removeAttribute('data-auto-disabled'); cb.disabled = false; cb.checked = false; } return; }
+            if(i===slotIndex){
+              // In the known slot: the chosen figure is included (not excluded), others are excluded
+              if(id===figureId){ cb.checked = false; cb.disabled = true; cb.setAttribute('data-auto-disabled','1'); }
+              else { cb.checked = true; cb.disabled = true; cb.setAttribute('data-auto-disabled','1'); }
+            }else{
+              // In other slots: the chosen figure cannot appear here => mark excluded and disable
+              if(id===figureId){ cb.checked = true; cb.disabled = true; cb.setAttribute('data-auto-disabled','1'); }
+              // otherwise leave user choices intact
+            }
+          });
+        }
+      };
+      for(let i=0;i<nSlots;i++){
+        const sel = document.getElementById(`known_${i}`);
+        if(sel) sel.addEventListener('change',(e)=>{
+          const val = e.target.value||null;
+          if(val){
+            for(let j=0;j<nSlots;j++){ if(j===i) continue; const other = document.getElementById(`known_${j}`); if(other && other.value===val){ alert('Figure already assigned to another known box.'); sel.value=''; window.handleKnownChange(i, null); return; } }
+          }
+          window.handleKnownChange(i,val);
+        });
+      }
     }
 
     // initial state: user must select a series first
@@ -308,14 +335,17 @@
           slotCounts.push({i, count: slotCount});
         }
         const sortedSlots = slotCounts.slice().sort((a,b)=>b.count - a.count);
-        const topIndices = sortedSlots.slice(0,3).map(x=>x.i);
+        const topIndices = [null,null,null];
+        if(sortedSlots[0] && sortedSlots[0].count>0) topIndices[0] = sortedSlots[0].i;
+        if(sortedSlots[1] && sortedSlots[1].count>0) topIndices[1] = sortedSlots[1].i;
+        if(sortedSlots[2] && sortedSlots[2].count>0) topIndices[2] = sortedSlots[2].i;
         // build per-slot chips showing probability for this figure in each slot
         const slotChips = [];
         for(let i=0;i<nSlots;i++){
           const slotCount = slotCounts[i].count;
           const pct = (slotCount/total*100).toFixed(2);
           let cls = 'slot-chip';
-          if(topIndices[0]===i) cls += ' top1'; else if(topIndices[1]===i) cls += ' top2'; else if(topIndices[2]===i) cls += ' top3';
+          if(topIndices[0]!==null && topIndices[0]===i) cls += ' top1'; else if(topIndices[1]!==null && topIndices[1]===i) cls += ' top2'; else if(topIndices[2]!==null && topIndices[2]===i) cls += ' top3';
           slotChips.push(`<div class="${cls}" title="Slot ${i+1}">S${i+1}: ${pct}%</div>`);
         }
         row.innerHTML = `<img class="thumb" src="${f.img}"><div>${f.name}</div><div class="per-slot-row">${slotChips.join('')}</div><div class="prob">${p}%</div>`;
