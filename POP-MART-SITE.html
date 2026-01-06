@@ -110,6 +110,9 @@
       {id:'silver', name:'Silver Mist Clown', img:'https://prod-america-res.popmart.com/default/20250929_103441_352152____8_why-so-serious-series-vinyl-plush-pendant-blind-box_plush-toys_details_pop-mart-us_____1200x1564.jpg'}
     ];
     let figures = [];
+    // figures that are eligible for slot assignment (non-secrets)
+    let activeFigures = [];
+    function isSecret(f){ return !f ? false : (f.secret === true || /secret/i.test(f.name)); }
     // allow dynamic replacement of figures when importing a set URL
     let nSlots = figures.length;
     let checkboxMatrix = []; 
@@ -119,12 +122,14 @@
     // initial render
     function applyFigures(newFigures){
       figures = newFigures.slice();
-      // render grid
+      // activeFigures exclude any secret entries (secrets are not regular pack slots)
+      activeFigures = figures.filter(f => !isSecret(f));
+      // render grid (show all figures; mark secret ones)
       const grid = document.getElementById('figureGrid'); grid.innerHTML='';
-      figures.forEach(f=>{ const d = document.createElement('div'); d.className='fig'; d.innerHTML = `<img src="${f.img}" alt="${f.name}"><div class="meta">${f.name}</div>`; grid.appendChild(d); });
+      figures.forEach(f=>{ const d = document.createElement('div'); d.className='fig'; const badge = isSecret(f)? `<div style="font-size:11px;color:#a64b00;margin-left:6px">Secret</div>` : ''; d.innerHTML = `<img src="${f.img}" alt="${f.name}"><div class="meta">${f.name}${badge}</div>`; grid.appendChild(d); });
       // rebuild boxes and known section
       const boxesContainer = document.getElementById('boxesContainer'); boxesContainer.innerHTML='';
-      nSlots = figures.length;
+      nSlots = activeFigures.length;
       document.getElementById('hintsTitle').textContent = `${nSlots}-box hints — check figures NOT contained in each box`;
       // remove existing knownSection if any
       const existing = document.getElementById('knownSection'); if(existing) existing.remove();
@@ -137,23 +142,23 @@
         const selLabel = document.createElement('div'); selLabel.style.fontSize='13px'; selLabel.textContent = `Box ${i+1}: `;
         const sel = document.createElement('select'); sel.id = `known_${i}`; sel.setAttribute('aria-label', `Known figure for box ${i+1}`);
         const emptyOpt = document.createElement('option'); emptyOpt.value=''; emptyOpt.textContent = '— Known figure (optional) —'; sel.appendChild(emptyOpt);
-        for(const f of figures){ const o = document.createElement('option'); o.value = f.id; o.textContent = f.name; sel.appendChild(o); }
+        for(const f of activeFigures){ const o = document.createElement('option'); o.value = f.id; o.textContent = f.name; sel.appendChild(o); }
         selWrap.appendChild(selLabel); selWrap.appendChild(sel);
         knownsContainer.appendChild(selWrap);
       }
       details.appendChild(knownsContainer);
       boxesContainer.parentElement.insertBefore(details, boxesContainer);
-      // create boxes
+      // create boxes (exclusion checkboxes only for active figures)
       for(let i=0;i<nSlots;i++){
         const b = document.createElement('div'); b.className='box';
-        const checks = figures.map(f=>`<label style="display:block;text-align:left;font-size:13px;margin-top:6px"><input type="checkbox" data-figure-id="${f.id}" /> ${f.name}</label>`).join('');
+        const checks = activeFigures.map(f=>`<label style="display:block;text-align:left;font-size:13px;margin-top:6px"><input type="checkbox" data-figure-id="${f.id}" /> ${f.name}</label>`).join('');
         b.innerHTML = `<div>Box ${i+1}</div><div style="font-size:12px;color:var(--muted);margin-top:6px">Check figures NOT contained in this box</div><div id="exclude_${i}">${checks}</div>`;
         boxesContainer.appendChild(b);
       }
       // rebuild checkboxMatrix and known select listeners
-      window.checkboxMatrix = Array.from({length:nSlots},(_,i)=>{ const container = document.getElementById(`exclude_${i}`); return Array.from(container.querySelectorAll('input[type=checkbox]')); });
+      window.checkboxMatrix = Array.from({length:nSlots},(_,i)=>{ const container = document.getElementById(`exclude_${i}`); return container ? Array.from(container.querySelectorAll('input[type=checkbox]')) : []; });
       window.handleKnownChange = function(slotIndex, figureId){ for(let i=0;i<nSlots;i++){ if(i===slotIndex) continue; window.checkboxMatrix[i].forEach(cb=>{ if(cb.getAttribute('data-figure-id')===figureId){ cb.checked=false; cb.disabled = figureId?true:false; } if(!figureId){ cb.disabled = false; } }); } }
-      for(let i=0;i<nSlots;i++){ const sel = document.getElementById(`known_${i}`); sel.addEventListener('change',(e)=>{ const val = e.target.value||null; if(val){ for(let j=0;j<nSlots;j++){ if(j===i) continue; const other = document.getElementById(`known_${j}`); if(other && other.value===val){ alert('Figure already assigned to another known box.'); sel.value=''; window.handleKnownChange(i, null); return; } } } window.handleKnownChange(i,val); }); }
+      for(let i=0;i<nSlots;i++){ const sel = document.getElementById(`known_${i}`); if(sel) sel.addEventListener('change',(e)=>{ const val = e.target.value||null; if(val){ for(let j=0;j<nSlots;j++){ if(j===i) continue; const other = document.getElementById(`known_${j}`); if(other && other.value===val){ alert('Figure already assigned to another known box.'); sel.value=''; window.handleKnownChange(i, null); return; } } } window.handleKnownChange(i,val); }); }
     }
 
     // initial state: user must select a series first
@@ -189,7 +194,7 @@
 
     // Solver: exact backtracking with ordering
     function buildAllowedDomains(hints, knownBoxes){
-      const allIds = figures.map(f=>f.id);
+      const allIds = activeFigures.map(f=>f.id);
       const allowed = Array.from({length:nSlots},()=>new Set(allIds));
       for(const h of hints){
         if(h && h.excludes){
@@ -212,7 +217,7 @@
     }
 
     function chooseModeAuto(){
-      const n = figures.length;
+      const n = activeFigures.length;
       const k = nSlots; // pack size equals number of slots
       function C(n,k){if(k>n) return 0; let res=1; for(let i=0;i<k;i++){res=res*(n-i)/(i+1)} return Math.round(res)}
       const combos = C(n,Math.min(6,n));
@@ -226,8 +231,8 @@
       const used = new Set();
       const assignment = Array(nSlots).fill(null);
       let solutionCount=0;
-      const perFigureCount = {}; figures.forEach(f=>perFigureCount[f.id]=0);
-      const perSlotCount = Array.from({length:nSlots},()=>{const m={}; figures.forEach(f=>m[f.id]=0); return m});
+      const perFigureCount = {}; activeFigures.forEach(f=>perFigureCount[f.id]=0);
+      const perSlotCount = Array.from({length:nSlots},()=>{const m={}; activeFigures.forEach(f=>m[f.id]=0); return m});
 
       // forward-check quick helper
       function hasCandidateForUnassigned(){
@@ -262,10 +267,10 @@
 
     // Approximate: rejection sampling
     function runApprox(allowed, targetSamples){
-      const perFigureCount = {}; figures.forEach(f=>perFigureCount[f.id]=0);
-      const perSlotCount = Array.from({length:nSlots},()=>{const m={}; figures.forEach(f=>m[f.id]=0); return m});
+      const perFigureCount = {}; activeFigures.forEach(f=>perFigureCount[f.id]=0);
+      const perSlotCount = Array.from({length:nSlots},()=>{const m={}; activeFigures.forEach(f=>m[f.id]=0); return m});
       let accepted=0, attempts=0;
-      const ids = figures.map(f=>f.id);
+      const ids = activeFigures.map(f=>f.id);
       while(accepted<targetSamples && attempts<targetSamples*100){
         attempts++;
         // sample nSlots distinct figures uniformly
@@ -291,9 +296,10 @@
       // update per-figure list
       const results = document.getElementById('results'); results.innerHTML='';
       const total = solutionCount || samplesInfo?.accepted || 1;
-      figures.forEach(f=>{
+      // show only non-secret / active figures in the probability list
+      activeFigures.forEach(f=>{
         const cnt = perFigureCount[f.id]||0;
-        const p = (cnt/total*100).toFixed(1);
+        const p = (cnt/total*100).toFixed(2);
         const row = document.createElement('div'); row.className='result-item';
         // compute per-slot counts and find top 3 slots for this figure
         const slotCounts = [];
@@ -307,7 +313,7 @@
         const slotChips = [];
         for(let i=0;i<nSlots;i++){
           const slotCount = slotCounts[i].count;
-          const pct = (slotCount/total*100).toFixed(1);
+          const pct = (slotCount/total*100).toFixed(2);
           let cls = 'slot-chip';
           if(topIndices[0]===i) cls += ' top1'; else if(topIndices[1]===i) cls += ' top2'; else if(topIndices[2]===i) cls += ' top3';
           slotChips.push(`<div class="${cls}" title="Slot ${i+1}">S${i+1}: ${pct}%</div>`);
@@ -325,7 +331,7 @@
         const map = perSlotCount[i]||{};
         const entries = Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,3);
         slotDiv.innerHTML = `<div style="font-weight:700">Slot ${i+1}</div>` + entries.map(e=>{
-          const id=e[0], v=e[1]; const name = figures.find(x=>x.id===id)?.name||id; const pct = (v/total*100).toFixed(1);
+          const id=e[0], v=e[1]; const name = figures.find(x=>x.id===id)?.name||id; const pct = (v/total*100).toFixed(2);
           return `<div style="font-size:12px">${name}: ${pct}%</div>`;
         }).join('');
         heat.appendChild(slotDiv);
@@ -338,7 +344,7 @@
         const map = perSlotCount[i]||{}; const top = Object.entries(map).sort((a,b)=>b[1]-a[1])[0];
         if(top) pack.push(figures.find(x=>x.id===top[0]).name);
       }
-      if(pack.length===6){ const p = document.createElement('div'); p.textContent = 'Top preview pack: ' + pack.join(', '); packs.appendChild(p); }
+      if(pack.length===nSlots){ const p = document.createElement('div'); p.textContent = 'Top preview pack: ' + pack.join(', '); packs.appendChild(p); }
     }
 
     // Compute handler
