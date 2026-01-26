@@ -55,6 +55,7 @@
           <option value="">— Select a series —</option>
           <option value="whyso">Why So Serious</option>
           <option value="twinkle">We are Twinkle Twinkle</option>
+          <option value="crushonyou">Twinkle Twinkle Crush On You</option>
         </select>
       </div>
         <div class="fig-grid" id="figureGrid"></div>
@@ -414,6 +415,39 @@
       navigator.clipboard.writeText(link).then(()=>alert('Link copied to clipboard'));
     });
 
+    // Embedded fallback payload for Crush On You
+    const crushOnYouPayload = {
+      figures: [
+        {id: "nerdy_cupid", name: "Nerdy Cupid"},
+        {id: "when_you_call", name: "When You Call"},
+        {id: "i_hear_you", name: "I Hear You"},
+        {id: "blushing_moment", name: "Blushing Moment"},
+        {id: "candy_words", name: "Candy Words"},
+        {id: "heart_unlocked", name: "Heart Unlocked"},
+        {id: "light_up", name: "Light Up"},
+        {id: "albatross_vow", name: "Albatross's Vow"},
+        {id: "flower_bearer", name: "Flower Bearer"},
+        {id: "hold_myself_with_love", name: "Hold Myself With Love"},
+        {id: "grow_grey_together", name: "Grow Grey Together"},
+        {id: "till_were_old", name: "Till We're Old", secret: true}
+      ],
+      hints: [
+        { type: "position", index: 0, excludes: [] },
+        { type: "position", index: 1, excludes: [] },
+        { type: "position", index: 2, excludes: [] },
+        { type: "position", index: 3, excludes: [] },
+        { type: "position", index: 4, excludes: [] },
+        { type: "position", index: 5, excludes: [] },
+        { type: "position", index: 6, excludes: [] },
+        { type: "position", index: 7, excludes: [] },
+        { type: "position", index: 8, excludes: [] },
+        { type: "position", index: 9, excludes: [] },
+        { type: "position", index: 10, excludes: [] },
+        { type: "position", index: 11, excludes: [] }
+      ],
+      knownBoxes: []
+    };
+
     // Embedded fallback payload for Twinkle Twinkle (used if fetching local JSON fails)
     const twinklePayload = {
       figures: [
@@ -477,6 +511,11 @@
       setUIEnabled(true);
     }
 
+    async function loadCrushOnYouPreset(){
+      loadPayload(crushOnYouPayload);
+      setUIEnabled(true);
+    }
+
     // On load: setup UI helpers and fragment loader
     function setUIEnabled(enabled){
       const els = ['compute','modeSelect','sampleSize','export','copyLink'];
@@ -488,6 +527,7 @@
       if(!v){ applyFigures([]); setUIEnabled(false); return; }
       if(v==='whyso'){ applyFigures(defaultFigures); setUIEnabled(true); return; }
       if(v==='twinkle'){ await loadTwinklePreset(); return; }
+      if(v==='crushonyou'){ await loadCrushOnYouPreset(); return; }
     });
 
     (function(){
