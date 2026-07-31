@@ -17,7 +17,7 @@
     .fig{display:flex;gap:8px;align-items:center;padding:6px;border-radius:6px}
     .fig img{width:56px;height:56px;object-fit:cover;border-radius:6px}
     .fig .meta{font-size:13px}
-    .boxes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+    .boxes{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:12px}
     .box{border:1px dashed #ddd;padding:10px;border-radius:8px;text-align:center;background:#fff;position:relative}
     .box img{width:80px;height:80px;object-fit:contain}
     label{display:block;font-size:12px;color:var(--muted);margin-top:8px}
@@ -27,6 +27,7 @@
     .results-summary{display:flex;gap:12px;align-items:center}
     .result-list{margin-top:12px}
     .result-item{display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid #f2f2f2;flex-wrap:wrap}
+    .result-item-deducted{background:#fff8e1;border-left:3px solid #f59e0b;border-radius:6px}
     .thumb{width:36px;height:36px;object-fit:cover;border-radius:6px}
     .prob{margin-left:auto;font-weight:600;color:var(--accent)}
     .per-slot-row{display:flex;gap:6px;align-items:center;flex:1;min-width:0;flex-wrap:wrap;margin-left:12px}
@@ -34,8 +35,12 @@
     .slot-chip.top1{background:linear-gradient(90deg, #fff7ed, #fff3e0);border-color:#ffd1a8;color:#a64b00;font-weight:700}
     .slot-chip.top2{background:linear-gradient(90deg,#f7fbff,#eef7ff);border-color:#cfe4ff;color:#0b5fff;font-weight:600}
     .slot-chip.top3{background:#f7fff7;border-color:#c8f0d0;color:#107a28;font-weight:600}
-    .heatmap{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:12px}
-    .slot{background:#fafafa;padding:6px;border-radius:6px;border:1px solid #f0f0f0;text-align:center;font-size:12px}
+    .slot-chip.deducted{background:#fee2e2;border-color:#fca5a5;color:#991b1b;font-weight:700}
+    .heatmap{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:12px}
+    .slot{background:#fafafa;padding:8px;border-radius:6px;border:1px solid #f0f0f0;font-size:12px}
+    .slot-title{font-weight:700;margin-bottom:6px}
+    .slot-entry{display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-top:1px solid #f0f0f0}
+    .slot-entry:first-child{border-top:none}
     .packs{margin-top:12px;max-height:220px;overflow:auto;border-top:1px solid #f4f4f4;padding-top:8px}
     footer{padding:12px;text-align:center;color:#888;font-size:13px}
     @media(max-width:900px){.container{flex-direction:column}.left{flex:auto}}
@@ -56,6 +61,7 @@
           <option value="whyso">Why So Serious</option>
           <option value="twinkle">We are Twinkle Twinkle</option>
           <option value="crushonyou">Twinkle Twinkle Crush On You</option>
+          <option value="generic12">Generic 12-box</option>
         </select>
       </div>
         <div class="fig-grid" id="figureGrid"></div>
@@ -65,12 +71,6 @@
       <div class="boxes" id="boxesContainer"></div>
 
       <div class="controls">
-        <select id="modeSelect" aria-label="Solver mode">
-          <option value="auto">Auto</option>
-          <option value="exact">Exact</option>
-          <option value="approx">Approx</option>
-        </select>
-        <input id="sampleSize" type="number" min="100" value="2000" style="width:120px;padding:6px;border-radius:6px;border:1px solid #ddd" />
         <button id="compute">Compute</button>
       </div>
     </section>
@@ -85,9 +85,6 @@
 
       <strong style="display:block;margin-top:14px">Per-slot heatmap</strong>
       <div class="heatmap" id="heatmap"></div>
-
-      <strong style="display:block;margin-top:14px">Sample / Packs</strong>
-      <div class="packs" id="packsList"></div>
 
       <div style="margin-top:12px">
         <button id="export">Export JSON</button>
@@ -244,15 +241,6 @@
       return {conflict:false, allowed};
     }
 
-    function chooseModeAuto(){
-      const n = activeFigures.length;
-      const k = nSlots; // pack size equals number of slots
-      function C(n,k){if(k>n) return 0; let res=1; for(let i=0;i<k;i++){res=res*(n-i)/(i+1)} return Math.round(res)}
-      const combos = C(n,Math.min(6,n));
-      // heuristic: if small collection prefer exact, otherwise approx
-      return combos<=50000? 'exact':'approx';
-    }
-
     // Exact enumeration
     async function runExact(allowed){
       const order = Array.from({length:nSlots},(_,i)=>i).sort((a,b)=>allowed[a].size - allowed[b].size || a-b);
@@ -293,37 +281,15 @@
       });
     }
 
-    // Approximate: rejection sampling
-    function runApprox(allowed, targetSamples){
-      const perFigureCount = {}; activeFigures.forEach(f=>perFigureCount[f.id]=0);
-      const perSlotCount = Array.from({length:nSlots},()=>{const m={}; activeFigures.forEach(f=>m[f.id]=0); return m});
-      let accepted=0, attempts=0;
-      const ids = activeFigures.map(f=>f.id);
-      while(accepted<targetSamples && attempts<targetSamples*100){
-        attempts++;
-        // sample nSlots distinct figures uniformly
-        const pool = ids.slice();
-        const pick = [];
-        for(let i=0;i<nSlots;i++){ const idx = Math.floor(Math.random()*pool.length); pick.push(pool.splice(idx,1)[0]); }
-        // assign to slots and check excludes
-        let ok=true;
-        for(let i=0;i<nSlots;i++){
-          if(allowed[i].has(pick[i])===false){ ok=false; break; }
-        }
-        if(!ok) continue;
-        accepted++;
-        for(let i=0;i<nSlots;i++){ perSlotCount[i][pick[i]]++; perFigureCount[pick[i]]++; }
-      }
-      return {accepted,attempts,perFigureCount,perSlotCount};
-    }
-
     // UI update
-    function updateResults(solutionCount, perFigureCount, perSlotCount, mode, samplesInfo){
-      document.getElementById('totalPacks').textContent = solutionCount|| samplesInfo?.accepted || 0;
-      document.getElementById('usedMode').textContent = mode;
+    function updateResults(solutionCount, perFigureCount, perSlotCount){
+      document.getElementById('totalPacks').textContent = solutionCount || 0;
+      document.getElementById('usedMode').textContent = 'exact';
       // update per-figure list
       const results = document.getElementById('results'); results.innerHTML='';
-      const total = solutionCount || samplesInfo?.accepted || 1;
+      const {hints, knownBoxes} = parseHints();
+      const {conflict, allowed} = buildAllowedDomains(hints, knownBoxes);
+      const total = solutionCount || 1;
       // show only non-secret / active figures in the probability list
       activeFigures.forEach(f=>{
         const cnt = perFigureCount[f.id]||0;
@@ -346,56 +312,48 @@
           const slotCount = slotCounts[i].count;
           const pct = (slotCount/total*100).toFixed(2);
           let cls = 'slot-chip';
+          const isDeducted = !conflict && allowed && allowed[i] && !allowed[i].has(f.id);
+          if(isDeducted) cls += ' deducted';
           if(topIndices[0]!==null && topIndices[0]===i) cls += ' top1'; else if(topIndices[1]!==null && topIndices[1]===i) cls += ' top2'; else if(topIndices[2]!==null && topIndices[2]===i) cls += ' top3';
-          slotChips.push(`<div class="${cls}" title="Slot ${i+1}">S${i+1}: ${pct}%</div>`);
+          slotChips.push(`<div class="${cls}" title="Slot ${i+1}">S${i+1}</div>`);
         }
         row.innerHTML = `<img class="thumb" src="${f.img}"><div>${f.name}</div><div class="per-slot-row">${slotChips.join('')}</div><div class="prob">${p}%</div>`;
         results.appendChild(row);
       });
       // heatmap (show top 6 figures per slot visually as names & probabilities)
       const heat = document.getElementById('heatmap'); heat.innerHTML='';
-      // ensure heatmap columns match number of slots
-      heat.style.gridTemplateColumns = `repeat(${nSlots},1fr)`;
+      heat.style.gridTemplateColumns = `repeat(auto-fit,minmax(180px,1fr))`;
       for(let i=0;i<nSlots;i++){
         const slotDiv = document.createElement('div'); slotDiv.className='slot';
-        // compute top candidate by perSlotCount
         const map = perSlotCount[i]||{};
-        const entries = Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,3);
-        slotDiv.innerHTML = `<div style="font-weight:700">Slot ${i+1}</div>` + entries.map(e=>{
+        const entries = Object.entries(map).sort((a,b)=>b[1]-a[1]);
+        slotDiv.innerHTML = `<div class="slot-title">Slot ${i+1}</div>` + entries.map(e=>{
           const id=e[0], v=e[1]; const name = figures.find(x=>x.id===id)?.name||id; const pct = (v/total*100).toFixed(2);
-          return `<div style="font-size:12px">${name}: ${pct}%</div>`;
+          return `<div class="slot-entry"><span>${name}</span><strong>${pct}%</strong></div>`;
         }).join('');
         heat.appendChild(slotDiv);
       }
       // packs preview: show a few example packs (constructed from perSlotCount by taking top choices)
-      const packs = document.getElementById('packsList'); packs.innerHTML='';
-      // simple deterministic preview: top-1 per slot
-      const pack = [];
-      for(let i=0;i<nSlots;i++){
-        const map = perSlotCount[i]||{}; const top = Object.entries(map).sort((a,b)=>b[1]-a[1])[0];
-        if(top) pack.push(figures.find(x=>x.id===top[0]).name);
+      const packs = document.getElementById('packsList');
+      if(packs){
+        packs.innerHTML='';
+        const pack = [];
+        for(let i=0;i<nSlots;i++){
+          const map = perSlotCount[i]||{}; const top = Object.entries(map).sort((a,b)=>b[1]-a[1])[0];
+          if(top) pack.push(figures.find(x=>x.id===top[0]).name);
+        }
+        if(pack.length===nSlots){ const p = document.createElement('div'); p.textContent = 'Top preview pack: ' + pack.join(', '); packs.appendChild(p); }
       }
-      if(pack.length===nSlots){ const p = document.createElement('div'); p.textContent = 'Top preview pack: ' + pack.join(', '); packs.appendChild(p); }
     }
 
     // Compute handler
     document.getElementById('compute').addEventListener('click', async ()=>{
       const {hints, knownBoxes} = parseHints();
-      const {conflict, allowed, reason} = buildAllowedDomains(hints, knownBoxes);
+      const {conflict, allowed} = buildAllowedDomains(hints, knownBoxes);
       if(conflict){ alert('One or more boxes have no allowed figures. Check hints.'); return; }
-      const modeSel = document.getElementById('modeSelect').value;
-      let mode = modeSel;
-      if(modeSel==='auto') mode = chooseModeAuto();
       document.getElementById('usedMode').textContent = 'Running...';
-      if(mode==='exact'){
-        // prepare allowed as array of Sets
-        const res = await runExact(allowed);
-        updateResults(res.solutionCount, res.perFigureCount, res.perSlotCount, 'exact');
-      } else {
-        const target = parseInt(document.getElementById('sampleSize').value,10)||2000;
-        const res = runApprox(allowed, target);
-        updateResults(res.accepted, res.perFigureCount, res.perSlotCount, 'approx', res);
-      }
+      const res = await runExact(allowed);
+      updateResults(res.solutionCount, res.perFigureCount, res.perSlotCount);
     });
 
     // Export / link
@@ -409,11 +367,21 @@
 
     document.getElementById('copyLink').addEventListener('click', ()=>{
       const {hints, knownBoxes} = parseHints();
-      const payload = {figures:figures.map(f=>f.id), hints, knownBoxes};
+      const payload = {
+        figures: figures.map(f=>({id:f.id,name:f.name,img:f.img})),
+        hints,
+        knownBoxes,
+        series: document.getElementById('seriesSelect').value
+      };
       const s = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
       const link = location.origin + location.pathname + '#data=' + s;
       navigator.clipboard.writeText(link).then(()=>alert('Link copied to clipboard'));
     });
+
+    function createPlaceholderImage(label, bgColor) {
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><rect width='100%' height='100%' fill='${bgColor}'/><circle cx='120' cy='120' r='80' fill='rgba(255,255,255,0.2)'/><text x='50%' y='52%' text-anchor='middle' dominant-baseline='middle' font-family='Arial, sans-serif' font-size='26' fill='white'>${label}</text></svg>`;
+      return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+    }
 
     // Embedded fallback payload for Crush On You
     const crushOnYouPayload = {
@@ -448,6 +416,19 @@
       knownBoxes: []
     };
 
+    const generic12Payload = {
+      figures: Array.from({length:12},(_,i)=>{
+        const colors = ['#f97316','#0f766e','#9333ea','#2563eb','#dc2626','#e11d48','#0ea5e9','#16a34a'];
+        return {
+          id: `figure_${i+1}`,
+          name: `Figure ${String(i+1).padStart(2,'0')}`,
+          img: createPlaceholderImage(`F${i+1}`, colors[i % colors.length])
+        };
+      }),
+      hints: Array.from({length:12},(_,i)=>({ type: 'position', index: i, excludes: [] })),
+      knownBoxes: []
+    };
+
     // Embedded fallback payload for Twinkle Twinkle (used if fetching local JSON fails)
     const twinklePayload = {
       figures: [
@@ -477,11 +458,33 @@
       knownBoxes: []
     };
 
+    function normalizeFigures(figuresPayload){
+      if(!Array.isArray(figuresPayload)) return [];
+      const colors = ['#f97316','#0f766e','#9333ea','#2563eb','#dc2626','#e11d48','#0ea5e9','#16a34a'];
+      return figuresPayload.map((entry,index)=>{
+        if(typeof entry === 'string'){
+          const id = entry;
+          return { id, name: id.replace(/_/g,' '), img: createPlaceholderImage(id, colors[index % colors.length]) };
+        }
+        if(entry && typeof entry === 'object'){
+          const id = entry.id || `figure_${index+1}`;
+          const name = entry.name || id.replace(/_/g,' ');
+          return { id, name, img: entry.img || createPlaceholderImage(name, colors[index % colors.length]) };
+        }
+        return null;
+      }).filter(Boolean);
+    }
+
     function loadPayload(payload){
       try{
-        if(payload.figures) applyFigures(payload.figures);
+        const normalizedFigures = normalizeFigures(payload?.figures);
+        if(normalizedFigures.length) applyFigures(normalizedFigures);
+        const seriesSelect = document.getElementById('seriesSelect');
+        if(payload?.series && seriesSelect){
+          seriesSelect.value = payload.series;
+        }
         // prefill hints if present (check appropriate boxes)
-        if(payload.hints){ payload.hints.forEach((h,i)=>{
+        if(payload?.hints){ payload.hints.forEach((h,i)=>{
           if(h && h.excludes){
             const container = document.getElementById(`exclude_${i}`);
             if(container){
@@ -493,7 +496,7 @@
           }
         }); }
         // prefill knownBoxes if present
-        if(payload.knownBoxes){ payload.knownBoxes.forEach(kb=>{
+        if(payload?.knownBoxes){ payload.knownBoxes.forEach(kb=>{
           const sel = document.getElementById(`known_${kb.index}`);
           if(sel) sel.value = kb.figureId;
           // disable that figure in other boxes
@@ -516,9 +519,14 @@
       setUIEnabled(true);
     }
 
+    async function loadGeneric12Preset(){
+      loadPayload(generic12Payload);
+      setUIEnabled(true);
+    }
+
     // On load: setup UI helpers and fragment loader
     function setUIEnabled(enabled){
-      const els = ['compute','modeSelect','sampleSize','export','copyLink'];
+      const els = ['compute','export','copyLink'];
       els.forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = !enabled; });
     }
 
@@ -528,30 +536,15 @@
       if(v==='whyso'){ applyFigures(defaultFigures); setUIEnabled(true); return; }
       if(v==='twinkle'){ await loadTwinklePreset(); return; }
       if(v==='crushonyou'){ await loadCrushOnYouPreset(); return; }
+      if(v==='generic12'){ await loadGeneric12Preset(); return; }
     });
 
     (function(){
       if(location.hash.startsWith('#data=')){
-        try{ const s=location.hash.slice(6); const payload = JSON.parse(decodeURIComponent(escape(atob(s))));
-          // prefill hints if present (check appropriate boxes)
-          if(payload.hints){ payload.hints.forEach((h,i)=>{
-            if(h && h.excludes){
-              const container = document.getElementById(`exclude_${i}`);
-              if(container){
-                h.excludes.forEach(id=>{
-                  const cb = container.querySelector(`input[data-figure-id="${id}"]`);
-                  if(cb) cb.checked = true;
-                });
-              }
-            }
-          }); }
-          // prefill knownBoxes if present
-          if(payload.knownBoxes){ payload.knownBoxes.forEach(kb=>{
-            const sel = document.getElementById(`known_${kb.index}`);
-            if(sel) sel.value = kb.figureId;
-            // disable that figure in other boxes
-            if(window.handleKnownChange) window.handleKnownChange(kb.index, kb.figureId);
-          }); }
+        try{
+          const s=location.hash.slice(6);
+          const payload = JSON.parse(decodeURIComponent(escape(atob(s))));
+          loadPayload(payload);
         }catch(e){}
       }
     })();
